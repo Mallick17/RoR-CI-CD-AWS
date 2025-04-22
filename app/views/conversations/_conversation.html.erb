@@ -1,0 +1,31 @@
+
+<li>
+  <div data-controller="conversations">
+    <div class="panel-group">
+      <div class="panel panel-default" data-conversation-id="<%= conversation.id %>">
+        <div class="panel-heading">
+          <h4 class="panel-title">
+            <a data-toggle="collapse" class="toggle-window" href="#conversation-panel-<%=conversation.id %>"><%= User.full_name(conversation.opposed_user(user)) %></a>
+            <%= link_to "x", close_conversation_path(conversation), class: "btn btn-default btn-xs pull-right", remote: true, method: :post %>
+            <button class="btn btn-default btn-xs pull-right" id="go-to-last" data-controller="conversations" data-action="conversations#scroll_to_last">Scroll to bottom</button>
+          </h4>
+        </div>
+        <div id="conversation-panel-<%=conversation.id %>" class="panel-collapse collapse conversation-panel">
+          <div class="panel-body">
+            <div class="messages-list">
+              <ul>
+                <%= render 'conversations/conversation_content', messages: conversation.messages, user: user %>
+              </ul>
+            </div>
+            <%= form_for [conversation, conversation.messages.new],class: 'new_message_form', remote: true,data: { controller: "conversations", action: "conversations#submit" } do |f| %>
+              <%= f.hidden_field :user_id, value: user.id %>
+              <%= f.hidden_field :conversation_id, value: conversation.id %>
+              <%= f.text_area :body, class: "form-control", id: "chat-area", placeholder: "Type your message...Enter to send" , "data-action":"keydown.enter->conversations#submit_by_enter"%>
+              <%= f.submit "Send", class: "btn btn-success", id:"submit-form" %>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</li>

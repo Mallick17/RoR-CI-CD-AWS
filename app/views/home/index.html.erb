@@ -1,0 +1,49 @@
+<div data-controller="home">
+  <p style="color: red;font-size:20px"><strong>Reload once if sending a message is not working, inorder to connect action cable</strong></p>
+  <%= render 'search_by_email' %>
+  <p> update: Fixed the bug which was due to session storage in turbo, and cleared it using {trubo:false} in devise login which broke js of the app <p>
+  <div class="row">
+    <div class="col-md-8">
+      <ul id="conversations-list" class="conversations-list">
+        <% @conversations.each do |conversation| %>
+          <%= render 'conversations/conversation', conversation: conversation, user: current_user %>
+        <% end %>
+      </ul>
+    </div>
+
+    <div class="col-md-4">
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          <h3 class="panel-title">User list</h3>
+        </div>
+        <div class="panel-body users-list">
+          <ul>
+            <% @users.with_attached_avatar.each do |user| %>
+              <li>
+                <div class="container">
+                  <% if user.avatar.attached? %>
+                    <%#= image_tag user.avatar.variant(resize: "50x50!").processed, class: "img-circle" %>
+                    <%#= image_tag user.avatar.variant(:thumb), class: "img-circle","width":"70", "height":"70"%>
+                    <%=link_to image_tag(user.avatar.variant(:thumb), class: "img-circle","width":"70", "height":"70"), user.avatar.variant(:profile), target: :_blank %>
+
+                <% else %>
+                    <%= image_tag "default_profile.jpeg" ,"width":"70", "height":"70"%>
+                  <% end %>
+                  <%= link_to User.full_name(user), conversations_path(user_id: user), remote: true, method: :post , class: 'user-id'%>
+                </div>
+              </li>
+              <% if search_email.present? %>
+                <ul>
+                  <li>Name: <%= User.full_name(user) %></li>
+                  <li>Email_Id: <%= user.email %></li>
+                  <li>Sent: <%=Conversation.sent_messages(user, current_user) %> </li>
+                  <li>Received: <%=Conversation.received_messages(user, current_user) %> </li>
+                </ul>
+              <% end %>
+            <% end %>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

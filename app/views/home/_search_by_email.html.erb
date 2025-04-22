@@ -1,0 +1,7 @@
+<%= form_for(:search ,method: :get) do |form| %>
+  <div>
+    <%= form.label :search_email %>
+    <%= form.text_field :search_email, value: search_email%>
+  </div>
+  <%= form.submit "Show Results"%>
+<% end %>
