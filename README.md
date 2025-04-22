@@ -13,6 +13,7 @@ chat-app/
     ├── docker-compose.yml
     └── stop.sh
 ```
+---
 
 ## Create `Dockerfile` in the root path of Repo
 The Dockerfile specifies the steps to create the application’s Docker image. A typical Dockerfile for a RoR application might look like this which is provided below:
@@ -238,7 +239,8 @@ services:
       - "6379:6379"
 
 ```
-
+</details>
+    
 ---
 
 ## Create `start.sh` in the scripts folder in the repo
@@ -316,6 +318,8 @@ $DOCKER_COMPOSE -f "$COMPOSE_FILE" up -d || {
 echo "✅ Deployment completed successfully."
 ```
 
+</details>
+
 ---
 
 ## Create `stop.sh` in the scripts folder in the repo
@@ -332,6 +336,8 @@ cd /home/ubuntu/chat-app
 # Stop and remove containers
 docker-compose down || true
 ```
+
+</details>
 
 ---
 
@@ -350,6 +356,7 @@ docker-compose -f /home/ubuntu/chat-app/docker-compose.yml down || true
 # Remove old images (optional cleanup)
 docker system prune -af || true
 ```
+</details>
 
 ---
 
@@ -365,6 +372,8 @@ echo "Running after_install.sh..."
 # Change ownership (optional, if files are owned by root)
 chown -R ubuntu:ubuntu /home/ubuntu/chat-app
 ```
+
+</details>
 
 ---
 
