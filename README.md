@@ -1,4 +1,19 @@
 # Real Time Ruby On Rails Chat App, Creating Docker Image with AWS CodeBuild.
+
+## 🗂 Folder Structure (Example)
+```
+chat-app/
+├── Dockerfile
+├── buildspec.yml
+├── appspec.yml
+└── scripts/
+    ├── before_install.sh
+    ├── after_install.sh
+    ├── start.sh
+    ├── docker-compose.yml
+    └── stop.sh
+```
+
 ## Create `Dockerfile` in the root path of Repo
 The Dockerfile specifies the steps to create the application’s Docker image. A typical Dockerfile for a RoR application might look like this which is provided below:
 
@@ -150,12 +165,211 @@ phases:
       - echo Build completed successfully.
 
 artifacts:
-  files: []
+  files:
+    - appspec.yml
+    - scripts/*
 ```
 
 </details>
 
 ---
+
+## Create `appspec.yml` in the root path of Repo
+
+<details>
+  <summary>Click to view appspec.yml</summary>
+
+```yml
+version: 0.0
+os: linux
+files:
+  - source: .
+    destination: /home/ubuntu/chat-app
+
+hooks:
+  ApplicationStop:
+    - location: scripts/stop.sh
+      timeout: 60
+  BeforeInstall:
+    - location: scripts/before_install.sh
+      timeout: 60
+  AfterInstall:
+    - location: scripts/after_install.sh
+      timeout: 60
+  ApplicationStart:
+    - location: scripts/start.sh
+      timeout: 60
+```
+
+</details>
+
+---
+
+## Create `docker-compose.yml` in the scripts folder in the repo
+
+<details>
+  <summary>Click to view docker-compose.yml</summary>
+
+```yml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    image: 339713104321.dkr.ecr.ap-south-1.amazonaws.com/chat-app:latest
+    command: bash -c "rm -f tmp/pids/server.pid && bundle exec puma -C config/puma.rb"
+    ports:
+      - "3000:3000"
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}         # ✅ Added
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}       # ✅ Added
+    depends_on:
+      - redis
+    restart: always
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+```
+
+---
+
+## Create `start.sh` in the scripts folder in the repo
+
+<details>
+  <summary>Click to view start.sh</summary>
+
+```sh
+#!/bin/bash
+set -euo pipefail
+
+echo "🚀 Running start.sh..."
+
+APP_DIR="/home/ubuntu/chat-app"
+COMPOSE_FILE="$APP_DIR/scripts/docker-compose.yml"
+ECR_IMAGE="339713104321.dkr.ecr.ap-south-1.amazonaws.com/chat-app:latest"
+SECRET_ARN="arn:aws:secretsmanager:ap-south-1:339713104321:secret:chat-app-secrets-rXZYzv"
+REGION="ap-south-1"
+
+# Binary paths
+AWS_CLI="/usr/bin/aws"
+DOCKER="/usr/bin/docker"
+DOCKER_COMPOSE="/usr/local/bin/docker-compose"
+
+# Ensure required tools exist
+for cmd in $AWS_CLI $DOCKER $DOCKER_COMPOSE jq; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "❌ Required command '$cmd' not found. Exiting."
+    exit 1
+  fi
+done
+
+# Navigate to app directory
+cd "$APP_DIR" || { echo "❌ Directory $APP_DIR not found"; exit 1; }
+
+# Authenticate Docker to ECR
+echo "🔐 Logging in to Amazon ECR..."
+$AWS_CLI ecr get-login-password --region "$REGION" | $DOCKER login --username AWS --password-stdin "$ECR_IMAGE" || {
+  echo "❌ ECR login failed"; exit 1;
+}
+
+# Pull the latest image
+echo "📦 Pulling latest image from ECR..."
+$DOCKER pull "$ECR_IMAGE"
+
+# Shut down existing containers (non-fatal)
+echo "🛑 Stopping existing containers (if any)..."
+$DOCKER_COMPOSE -f "$COMPOSE_FILE" down || true
+
+# Fetch secrets from Secrets Manager
+echo "🔐 Fetching secrets from AWS Secrets Manager..."
+SECRET_JSON=$($AWS_CLI secretsmanager get-secret-value \
+  --secret-id "$SECRET_ARN" \
+  --region "$REGION" \
+  --query SecretString \
+  --output text)
+
+# Export environment variables
+export DB_USER=$(echo "$SECRET_JSON" | jq -r '.DB_USER')
+export DB_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
+export DB_HOST=$(echo "$SECRET_JSON" | jq -r '.DB_HOST')
+export DB_PORT=$(echo "$SECRET_JSON" | jq -r '.DB_PORT')
+export DB_NAME=$(echo "$SECRET_JSON" | jq -r '.DB_NAME')
+export SECRET_KEY_BASE=$(echo "$SECRET_JSON" | jq -r '.SECRET_KEY_BASE')
+export RAILS_MASTER_KEY=$(echo "$SECRET_JSON" | jq -r '.RAILS_MASTER_KEY')  # 👈 NEW
+
+echo "Secrets loaded and exported."
+
+# Start containers
+echo "🚀 Starting containers using Docker Compose..."
+$DOCKER_COMPOSE -f "$COMPOSE_FILE" up -d || {
+  echo "❌ Failed to start containers"; exit 1;
+}
+
+echo "✅ Deployment completed successfully."
+```
+
+---
+
+## Create `stop.sh` in the scripts folder in the repo
+
+<details>
+  <summary>Click to view stop.sh</summary>
+
+```sh
+#!/bin/bash
+echo "Running stop.sh..."
+
+cd /home/ubuntu/chat-app
+
+# Stop and remove containers
+docker-compose down || true
+```
+
+---
+
+## Create `before_install.sh` in the scripts folder in the repo
+
+<details>
+  <summary>Click to view before_install.sh</summary>
+
+```sh
+#!/bin/bash
+echo "Running before_install.sh..."
+
+# Stop old containers
+docker-compose -f /home/ubuntu/chat-app/docker-compose.yml down || true
+
+# Remove old images (optional cleanup)
+docker system prune -af || true
+```
+
+---
+
+## Create `after_install.sh` in the scripts folder in the repo
+
+<details>
+  <summary>Click to view after_install.sh</summary>
+
+```yml
+#!/bin/bash
+echo "Running after_install.sh..."
+
+# Change ownership (optional, if files are owned by root)
+chown -R ubuntu:ubuntu /home/ubuntu/chat-app
+```
+
+---
+
+
+
 
 ## **Step-by-Step guide** on how to store your `.env` secrets in **AWS Secrets Manager using the Console UI**
 
@@ -1170,92 +1384,6 @@ codebuild-ror-app-role
 ### 4. **Finish and Create Role**
 ---
 
-## Step-by-Step Guide: Build Docker Image with AWS CodeBuild (via Console)
-### Step 1: Open CodeBuild and Start New Project
-1. **Project name**: `chat-app` (you’ve done this)
-2. **Project type**: Keep **Default project** selected
-3. Expand **Additional configuration** if you want to add tags or build timeout (optional)
-
-### Step 2: Source Settings
-1. Under **Source**, click **Add source**
-2. **Source provider**: Choose your source (e.g. GitHub, CodeCommit, Bitbucket)
-3. **Repository**: Click Repository in my GitHub Account, Authenticate and pick your repository
-4. Check **Webhooks** (Rebuild every time a code change is pushed to this repository) if you want to trigger builds on code push, Click on **Single Build**
-5. Create Webhook in AWS CodeBuild
-   1. **Navigate to the GitHub settings page for the GitHub resource associated with your CodeBuild project**
-   2. **Select Webhooks and click Add webhook**
-   3. **Add the above Payload URL value under Payload URL**
-   4. **Set the Content type to application/json**
-   5. **Add the above Secret value under Secret**
-   6. **Under Which events would you like to trigger this webhook?, select Let me select individual events**
-   7. **Select the individual webhook event types you would like to send to CodeBuild**
-   8. **For GitHub Actions runner projects, select the workflow_id jobs event type**
-   9. **Click Add webhook**
-
-### Step 3: Environment Settings
-0. **Provisioning Model**: Select `On-Demand`
-1. **Environment image**: Select `Managed image`
-2. **Compute**: Select `EC2`
-3. **Running Mode**: Select `Container`
-4. **Operating system**: Ubuntu
-5. **Runtime(s)**: Standard
-6. **Image**: Choose latest standard (e.g. `aws/codebuild/standard:7.0`)
-7. **Service role**:
-   - Choose an existing one (make sure this role has access to:
-     - Secrets Manager
-     - ECR (if pushing image)
-     - S3 (if pulling artifacts)
-     - CloudWatch Logs
-
-### Step 4: Add Secrets from AWS Secrets Manager
-1. Scroll down to the **Environment variables** section
-2. Click **"Add environment variable"**
-3. Use this format:
-- **Name**: `ENV_VARS`
-  - **Value**: `arn:aws:secretsmanager`
-  - **Type**: Choose **Secrets Manager**
-
-- **Name**: `AWS_DEFAULT_REGION`
-  - **Value**: `ap-south-1`
-  - **Type**: Choose **Plaintext**
-
-- **Name**: `AWS_ACCOUNT_ID`
-  - **Value**: `339713104321`
-  - **Type**: Choose **Plaintext**
-
-- **Name**: `ECR_REPO_URI`
-  - **Value**: `339713104321.dkr.ecr.ap`
-  - **Type**: Choose **Plaintext**
- 
-✳ CodeBuild will inject the secret into environment variables automatically.
-
-### Step 5: Buildspec Configuration
-1. **Buildspec**: Choose **Use a buildspec file**
-2. Leave it as default if your `buildspec.yml` is at the root of your repo
-
-📄 Your `buildspec.yml` should handle:
-- Docker login to ECR (if needed)
-- Docker build
-- Docker tag
-- Docker push (if needed)
-
-### Step 6: Artifacts
-1. If you're only pushing to ECR, choose:
-   - **Type**: `No artifacts`
-2. Otherwise, you can choose `Amazon S3` to store output (e.g. `.tar`, logs, etc.)
-
-### Step 7: Logs
-Enable CloudWatch logs (default is good).
-
-### Step 8: Click **Create Build Project**
-Once created, you'll be redirected to the project overview.
-
-### Step 9: Start a Manual Build
-1. Click **Start build**
-2. Confirm the branch and buildspec location
-3. Click **Start build**
-
-We can watch the logs live. If successful, your image will be built, and if configured, pushed to Amazon ECR.
 
 ---
 
