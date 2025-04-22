@@ -13,6 +13,12 @@ chat-app/
     ├── docker-compose.yml
     └── stop.sh
 ```
+
+## ⚙️ Permissions
+Make sure to make the scripts folder executable:
+```bash
+chmod +x scripts/*.sh
+```
 ---
 
 ## Create `Dockerfile` in the root path of Repo
@@ -242,6 +248,8 @@ services:
 </details>
     
 ---
+
+### We're deploying a **Dockerized Ruby on Rails app** on **Ubuntu EC2 instances** using **AWS CodeDeploy**, your scripts (`start.sh`, `stop.sh`, `before_install.sh`, `after_install.sh`) will live inside a `scripts/` directory at the **root of your repository**.
 
 ## Create `start.sh` in the scripts folder in the repo
 
@@ -1393,6 +1401,212 @@ codebuild-ror-app-role
 ### 4. **Finish and Create Role**
 ---
 
+\Sure! Here's a clean, professional, and organized documentation of your **CI/CD Pipeline Deployment for a Ruby on Rails Application (Without ECS)** — exactly as per your configurations and naming conventions:
 
 ---
+
+# 🚀 CI/CD Pipeline Deployment of Ruby on Rails Application (Without ECS)
+
+This guide walks through deploying a Dockerized Ruby on Rails application using AWS services including **EC2, CodeBuild, CodeDeploy, and CodePipeline.**
+
+---
+
+## 🧱 Step 1: Launch EC2 Instances for CodeDeploy
+
+1. Navigate to **EC2 > Launch Instance**
+2. Select **Amazon Linux 2** or **Ubuntu**
+3. Choose instance type: `t2.micro` or higher
+4. Configure Security Group:
+   - Allow **SSH (22)** from your IP
+   - Allow **HTTP (80)** or the app port (e.g., 3000)
+
+5. In **User Data**, use the following script to install Docker & CodeDeploy agent:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker --version
+docker-compose --version
+sudo apt update
+sudo apt install ruby -y
+chmod +x ./install
+sudo ./install auto
+systemctl status codedeploy-agent
+sudo apt-get update && sudo apt-get install jq -y
+install aws-cli
+```
+
+---
+
+## 🏷️ Step 2: Tag EC2 Instances
+
+1. Go to your EC2 instance
+2. Add the following **Tags**:
+   - **Key:** `Name`
+   - **Value:** `CodeDeployInstance`
+
+> ⚠️ Ensure this matches the tag configured in `appspec.yml`
+
+---
+
+## 🔐 Step 3: Create IAM Role for EC2 Instance
+
+### Create `EC2CodeDeployRole`:
+
+1. Go to **IAM > Roles > Create Role**
+2. Trusted entity: **EC2**
+3. Attach the following permissions:
+   - `AmazonEC2RoleforAWSCodeDeploy`
+   - `AmazonEC2ContainerRegistryReadOnly`
+   - `AmazonS3ReadOnlyAccess`
+   - Custom **ECR Pull Policy**:
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": [
+             "ecr:GetAuthorizationToken",
+             "ecr:BatchCheckLayerAvailability",
+             "ecr:GetDownloadUrlForLayer",
+             "ecr:BatchGetImage"
+           ],
+           "Resource": "*"
+         }
+       ]
+     }
+     ```
+   - Custom **Secrets Manager Access**:
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": "secretsmanager:GetSecretValue",
+           "Resource": "arn:aws:secretsmanager:ap-south-1:339713104321:secret:chat-app-secrets-rXZYzv"
+         }
+       ]
+     }
+     ```
+4. Name the role: `EC2CodeDeployRole`
+5. Attach it to the EC2 instance
+
+---
+
+## 👷 Step 4: Create IAM Role for CodeDeploy
+
+### Create `AWSCodeDeployRole`:
+
+1. Go to **IAM > Roles > Create Role**
+2. Trusted entity: **AWS Service**
+3. Use Case: **CodeDeploy – EC2**
+4. Attach **Managed Policy**: `AWSCodeDeployRole`
+
+> ✅ You may use the AWS managed policy or a custom version:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "ec2:Get*",
+        "tag:GetTags",
+        "autoscaling:CompleteLifecycleAction",
+        "autoscaling:DeleteLifecycleHook",
+        "autoscaling:Describe*",
+        "autoscaling:Get*",
+        "autoscaling:PutLifecycleHook",
+        "autoscaling:PutNotificationConfiguration",
+        "autoscaling:RecordLifecycleActionHeartbeat",
+        "autoscaling:UpdateAutoScalingGroup",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:PutMetricAlarm",
+        "codedeploy:*",
+        "iam:PassRole",
+        "s3:Get*",
+        "s3:List*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+---
+
+## 🚚 Step 5: Create CodeDeploy Application
+
+1. Go to **CodeDeploy > Applications > Create Application**
+2. Name: `RoRApp`
+3. Compute platform: **EC2/On-Premises**
+
+### Create Deployment Group
+
+1. Name: `RoRAppDeploymentGroup`
+2. Service Role: Select IAM role with `AWSCodeDeployRole`
+3. Deployment type: **In-place**
+4. Environment configuration:
+   - Select **Amazon EC2 instances**
+   - Filter by tag: `Name=CodeDeployInstance`
+   - Disable Load Balancer
+5. Deployment settings:
+   - Deployment configuration: `CodeDeployDefault.AllAtOnce`
+
+---
+
+## 🛠️ Step 6: Update CodeBuild - `buildspec.yml`
+
+Ensure artifacts are properly uploaded for CodeDeploy to use:
+
+```yaml
+artifacts:
+  files:
+    - appspec.yml
+    - scripts/*
+```
+
+---
+
+## ⚙️ Step 7: Create CodePipeline
+
+1. Go to **CodePipeline > Create Pipeline**
+2. **Pipeline Settings**:
+   - Choose a name for your pipeline
+
+3. **Source Stage**:
+   - Source: GitHub / CodeCommit
+
+4. **Build Stage**:
+   - Provider: **AWS CodeBuild**
+   - Use pre-configured build project
+
+5. **Deploy Stage**:
+   - Provider: **AWS CodeDeploy**
+   - Application Name: `RoRApp`
+   - Deployment Group: `RoRAppDeploymentGroup`
+   - Artifacts: Use CodeBuild output
+
+> 🧠 **Tip**: Provide necessary environment variables for secrets and configurations when deploying.
+
+---
+
+You're now ready to fully deploy your Ruby on Rails application using a CI/CD pipeline without ECS, leveraging EC2, CodeBuild, CodeDeploy, and CodePipeline.
+
+Let me know if you'd like this exported to a markdown or PDF file too!
+
 
