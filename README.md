@@ -1401,11 +1401,7 @@ codebuild-ror-app-role
 ### 4. **Finish and Create Role**
 ---
 
-\Sure! Here's a clean, professional, and organized documentation of your **CI/CD Pipeline Deployment for a Ruby on Rails Application (Without ECS)** — exactly as per your configurations and naming conventions:
-
----
-
-# 🚀 CI/CD Pipeline Deployment of Ruby on Rails Application (Without ECS)
+# CI/CD Pipeline Deployment of Ruby on Rails Application (Without ECS)
 
 This guide walks through deploying a Dockerized Ruby on Rails application using AWS services including **EC2, CodeBuild, CodeDeploy, and CodePipeline.**
 
@@ -1423,8 +1419,11 @@ This guide walks through deploying a Dockerized Ruby on Rails application using 
 5. In **User Data**, use the following script to install Docker & CodeDeploy agent:
 
 ```bash
+# Update package index and install prerequisites
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl
+sudo apt-get install -y ca-certificates curl jq ruby
+
+# Install Docker
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
@@ -1432,17 +1431,29 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Install Docker Compose
 sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
+
+# Verify installations
 docker --version
 docker-compose --version
+
+# Install AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+# Install CodeDeploy agent
 sudo apt update
 sudo apt install ruby -y
+wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
 chmod +x ./install
 sudo ./install auto
+sudo systemctl start codedeploy-agent
+sudo systemctl enable codedeploy-agent
 systemctl status codedeploy-agent
-sudo apt-get update && sudo apt-get install jq -y
-install aws-cli
 ```
 
 ---
@@ -1605,8 +1616,27 @@ artifacts:
 
 ---
 
-You're now ready to fully deploy your Ruby on Rails application using a CI/CD pipeline without ECS, leveraging EC2, CodeBuild, CodeDeploy, and CodePipeline.
+## Step 8: Verify Docker Container on EC2
 
-Let me know if you'd like this exported to a markdown or PDF file too!
+After deployment, SSH into your EC2 instance and run the following commands to check if your Rails app container is running correctly:
+
+```bash
+# List running Docker containers
+sudo docker ps
+
+# View logs of the container (replace <container_id> with actual ID)
+sudo docker logs <container_id>
+
+# Confirm the container is still running
+sudo docker ps
+
+# Access the running container’s bash shell (replace <container_id> accordingly)
+sudo docker exec -it <container_id> /bin/bash
+```
+
+> 💡 You can get the `<container_id>` from the `sudo docker ps` output. This helps you debug or inspect your app inside the container.
+
+---
+
 
 
